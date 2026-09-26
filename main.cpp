@@ -3,6 +3,7 @@
 #include <string>
 #include <sstream>
 #include <fstream>
+#include <map>
 
 struct Actividad {
     std::string id;
@@ -57,6 +58,19 @@ Actividad parsearLinea(const std::string& linea) {
 
     return a;
 }
+
+// Arma el mapa inverso: dado un id, quien depende de el
+std::map<std::string, std::vector<std::string>> construirDependientes(const std::vector<Actividad>& actividades) {
+    std::map<std::string, std::vector<std::string>> dependientes;
+
+    for (const Actividad& a : actividades) {
+        for (const std::string& dep : a.dependencias) {
+            dependientes[dep].push_back(a.id); // dep es esperado por a.id
+        }
+    }
+
+    return dependientes;
+}
  
 int main() {
     std::ifstream archivo("plan.txt");
@@ -81,6 +95,19 @@ int main() {
                    << " | Tiempo: " << a.tiempo_ms << "ms"
                    << " | Depende de: ";
         for (const std::string& dep : a.dependencias) {
+            std::cout << dep << " ";
+        }
+        std::cout << std::endl;
+    }
+
+    // Construye el mapa de dependientes
+    auto dependientes = construirDependientes(actividades);
+
+    // Imprime el mapa para verificar que quedo bien
+    std::cout << "\n--- Dependientes ---" << std::endl;
+    for (const auto& par : dependientes) {
+        std::cout << "Actividad " << par.first << " es esperada por: ";
+        for (const std::string& dep : par.second) {
             std::cout << dep << " ";
         }
         std::cout << std::endl;
