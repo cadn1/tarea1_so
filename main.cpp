@@ -4,6 +4,8 @@
 #include <sstream>
 #include <fstream>
 #include <map>
+#include <unistd.h>
+#include <sys/wait.h>
 
 struct Actividad {
     std::string id;
@@ -23,7 +25,7 @@ std::string quitarEspacios(const std::string& s) {
 }
 
 
-// Recibe una linea completa de plan.txt (ej: "4 : asar_longaniza : 800 : 1, 2")
+// Recibe una linea completa de plan.txt como por ejemplo: ("4 : asar_longaniza : 800 : 1, 2")
 Actividad parsearLinea(const std::string& linea) {
     Actividad a;
     std::stringstream ss(linea);
@@ -71,6 +73,24 @@ std::map<std::string, std::vector<std::string>> construirDependientes(const std:
 
     return dependientes;
 }
+
+void ejecutarActividad(const Actividad& a) {
+    pid_t pid = fork();
+
+    if (pid < 0) {
+       std::cout << "No se pudo crear el proceso para la actividad " << a.id << std::endl;
+        return;
+	}
+
+    if (pid == 0) {
+        std::cout << "[Hijo " << getpid() << "] Ejecutando actividad "
+                   << a.id << " (" << a.nombre << ") por " << a.tiempo_ms << "ms" << std::endl;
+        usleep(a.tiempo_ms * 1000); // usleep espera en micro segundos, por eso el *1000
+        std::cout << "[Hijo " << getpid() << "] Termino actividad " << a.id << std::endl;
+        exit(0);
+    }
+	// aqui estoy en el proceso padre sigue de largo sin esperar todavia
+}
  
 int main() {
     std::ifstream archivo("plan.txt");
@@ -111,6 +131,16 @@ int main() {
             std::cout << dep << " ";
         }
         std::cout << std::endl;
+    }
+
+    std::cout << "\n--- Ejecutando actividades ---" << std::endl;
+    for (const Actividad& a : actividades) {
+        ejecutarActividad(a);
+    }
+
+    // Esperar a que todos los hijos terminen antes de que el padre salga
+    for (size_t i = 0; i < actividades.size(); i++) {
+        wait(NULL);
     }
 
     return 0;
