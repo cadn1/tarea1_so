@@ -1,170 +1,22 @@
 #include <iostream>
 #include <vector>
 #include <string>
-#include <sstream>
 #include <fstream>
-#include <map>
-#include <set>
-#include <unistd.h>
-#include <sys/wait.h>
+#include "lector.hpp" 
+#include "motor.hpp"  
 
-struct Actividad {
-    std::string id;
-    std::string nombre;
-    int tiempo_ms;
-    std::vector<std::string> dependencias;
-};
-
-// Quita espacios y tabs al inicio y al final de un string.
-// Necesario porque plan.txt tiene espacios alrededor de los ":" (ej: "1 : prender_carbon")
-// y sin esto, el id quedaria como "1 " en vez de "1".
-std::string quitarEspacios(const std::string& s) {
-    size_t inicio = s.find_first_not_of(" \t");  // primera posicion que NO es espacio/tab
-    size_t fin = s.find_last_not_of(" \t");       // ultima posicion que NO es espacio/tab
-    if (inicio == std::string::npos) return "";   // el string era solo espacios (o vacio)
-    return s.substr(inicio, fin - inicio + 1);    // devuelve solo la parte "real" del string
-}
-
-// Recibe una linea completa de plan.txt como por ejemplo: ("4 : asar_longaniza : 800 : 1, 2")
-Actividad parsearLinea(const std::string& linea) {
-    Actividad a;
-    std::stringstream ss(linea);
-    std::string campo;
-// Para la parte del id
-    std::getline(ss, campo, ':');
-    a.id = quitarEspacios(campo);
-// Para la parte del nombre
-    std::getline(ss, campo, ':');
-    a.nombre = quitarEspacios(campo);
-
-// Para la parte del tiempo en ms
-    std::getline(ss, campo, ':');
-    campo = quitarEspacios(campo);
-    if (campo.empty()) {
-        a.tiempo_ms = 100 + rand() % (5000 - 100 + 1);
-    } else {
-        a.tiempo_ms = std::stoi(campo);
+int main(int argc, char* argv[]) { // validar
+    if (argc != 3) {
+        std::cerr << "Uso: " << argv[0] << " <archivo.txt> <K_concurrencia>" << std::endl;
+        return 1;
     }
 
-// Para la parte de las dependencias
-    std::getline(ss, campo);
-    campo = quitarEspacios(campo);
-    std::stringstream depsStream(campo);
-    std::string dep;
-    while (std::getline(depsStream, dep, ',')) {
-        dep = quitarEspacios(dep);
-        if (!dep.empty()) {
-            a.dependencias.push_back(dep);
-        }
-    }
+    std::string nombre_archivo = argv[1];
+    int limite_k = std::stoi(argv[2]);
 
-    return a;
-}
-
-// Arma el mapa inverso: dado un id, quien depende de el
-std::map<std::string, std::vector<std::string>> construirDependientes(const std::vector<Actividad>& actividades) {
-    std::map<std::string, std::vector<std::string>> dependientes;
-
-    for (const Actividad& a : actividades) {
-        for (const std::string& dep : a.dependencias) {
-            dependientes[dep].push_back(a.id); // dep es esperado por a.id
-        }
-    }
-
-    return dependientes;
-}
-
-// Ejecuta el plan respetando dependencias y el limite K de concurrencia.
-// Sin busy waiting: usa wait() que bloquea de verdad, sin gastar CPU en un loop de chequeo.
-// Sin race conditions: solo el proceso padre toca estas estructuras, los hijos no comparten memoria.
-// Ademas usa pipes: cada hijo avisa al padre con un mensaje cuando termina.
-void ejecutarPlan(std::vector<Actividad>& actividades, int K) {
-    std::set<std::string> completadas;      // ids que ya terminaron
-    std::set<std::string> corriendoIds;     // ids que estan corriendo ahora
-    std::map<pid_t, std::string> pidToId;   // para saber que actividad termino cuando wait() devuelve un pid
-    std::map<pid_t, int> pidToFd;           // extremo de lectura del pipe de cada hijo activo
-    int activos = 0;
-    size_t totalActividades = actividades.size();
-    size_t completadasCount = 0;
-
-    while (completadasCount < totalActividades) {
-        // Intenta lanzar actividades listas mientras haya cupo (K)
-        for (Actividad& a : actividades) {
-            if (completadas.count(a.id) || corriendoIds.count(a.id)) continue; // ya la lance o ya termino
-            if (activos >= K) break; // sin cupo, no lanzo mas por ahora
-
-            bool listas = true;
-            for (const std::string& dep : a.dependencias) {
-                if (!completadas.count(dep)) { listas = false; break; }
-            }
-            if (!listas) continue; // todavia le falta alguna dependencia
-
-            int fd[2]; // pipe para que este hijo avise al padre cuando termine
-            if (pipe(fd) == -1) {
-                perror("pipe");
-                continue;
-            }
-
-            pid_t pid = fork();
-            if (pid < 0) {
-                std::cout << "No se pudo crear el proceso para la actividad " << a.id << std::endl;
-                close(fd[0]);
-                close(fd[1]);
-                continue;
-            }
-            if (pid == 0) {
-                close(fd[0]); // el hijo no lee, solo escribe
-                std::cout << "[Hijo " << getpid() << "] Ejecutando actividad "
-                           << a.id << " (" << a.nombre << ") por " << a.tiempo_ms << "ms" << std::endl;
-                usleep(a.tiempo_ms * 1000); // usleep espera en micro segundos, por eso el *1000
-
-                // Manda un mensaje al padre avisando que termino, antes de salir
-                std::string mensaje = "Actividad " + a.id + " (" + a.nombre + ") completada";
-                write(fd[1], mensaje.c_str(), mensaje.size());
-                close(fd[1]);
-
-                std::cout << "[Hijo " << getpid() << "] Termino actividad " << a.id << std::endl;
-                exit(0);
-            } else {
-                // aqui estoy en el proceso padre sigue de largo sin esperar todavia
-                close(fd[1]); // el padre no escribe, solo lee
-                pidToId[pid] = a.id;
-                pidToFd[pid] = fd[0];
-                corriendoIds.insert(a.id);
-                activos++;
-            }
-        }
-
-        // Espera a que termine CUALQUIER hijo (bloqueante, sin busy waiting)
-        int status;
-        pid_t terminado = wait(&status);
-        if (terminado > 0) {
-            std::string idTerminado = pidToId[terminado];
-
-            // Lee el mensaje que el hijo dejo en el pipe antes de terminar
-            int fdLectura = pidToFd[terminado];
-            char buffer[256];
-            int n = read(fdLectura, buffer, sizeof(buffer) - 1);
-            if (n > 0) {
-                buffer[n] = '\0';
-                std::cout << "[Padre] Recibido: " << buffer << std::endl;
-            }
-            close(fdLectura);
-
-            completadas.insert(idTerminado);
-            corriendoIds.erase(idTerminado);
-            pidToId.erase(terminado);
-            pidToFd.erase(terminado);
-            activos--;
-            completadasCount++;
-        }
-    }
-}
-
-int main() {
-    std::ifstream archivo("plan.txt");
+    std::ifstream archivo(nombre_archivo);
     if (!archivo.is_open()) {
-        std::cout << "Error: no se pudo abrir el archivo plan.txt" << std::endl;
+        std::cerr << "Error: no se pudo abrir el archivo " << nombre_archivo << std::endl;
         return 1;
     }
 
@@ -172,40 +24,18 @@ int main() {
     std::string linea;
 
     while (std::getline(archivo, linea)) {
-        if (linea.empty()) continue; // salta lineas vacias, por si acaso
+        if (linea.empty()) continue;
         Actividad a = parsearLinea(linea);
         actividades.push_back(a);
     }
 
-    // Imprimir todo lo que se parseo, para verificar contra el plan.txt original
-    for (const Actividad& a : actividades) {
-        std::cout << "ID: " << a.id
-                   << " | Nombre: " << a.nombre
-                   << " | Tiempo: " << a.tiempo_ms << "ms"
-                   << " | Depende de: ";
-        for (const std::string& dep : a.dependencias) {
-            std::cout << dep << " ";
-        }
-        std::cout << std::endl;
-    }
+    std::cout << "--- Planificador Dieciochero ---" << std::endl;
+    std::cout << "Archivo cargado: " << nombre_archivo << std::endl;
+    std::cout << "Total de actividades a procesar: " << actividades.size() << std::endl;
+    std::cout << "Limite de trabajadores en simultaneo (K): " << limite_k << std::endl;
 
-    // Construye el mapa de dependientes
-    auto dependientes = construirDependientes(actividades);
+    ejecutarPlan(actividades, limite_k);
 
-    // Imprime el mapa para verificar que quedo bien
-    std::cout << "\n--- Dependientes ---" << std::endl;
-    for (const auto& par : dependientes) {
-        std::cout << "Actividad " << par.first << " es esperada por: ";
-        for (const std::string& dep : par.second) {
-            std::cout << dep << " ";
-        }
-        std::cout << std::endl;
-    }
-
-    int K = 2; // por ahora lo dejare fijo, despues lo tomamos de argv
-    std::cout << "\n--- Ejecutando plan con K=" << K << " ---" << std::endl;
-    ejecutarPlan(actividades, K);
-
+    std::cout << "FIN" << std::endl;
     return 0;
 }
-
