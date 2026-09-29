@@ -77,10 +77,12 @@ std::map<std::string, std::vector<std::string>> construirDependientes(const std:
 // Ejecuta el plan respetando dependencias y el limite K de concurrencia.
 // Sin busy waiting: usa wait() que bloquea de verdad, sin gastar CPU en un loop de chequeo.
 // Sin race conditions: solo el proceso padre toca estas estructuras, los hijos no comparten memoria.
+// Ademas usa pipes: cada hijo avisa al padre con un mensaje cuando termina.
 void ejecutarPlan(std::vector<Actividad>& actividades, int K) {
     std::set<std::string> completadas;      // ids que ya terminaron
     std::set<std::string> corriendoIds;     // ids que estan corriendo ahora
     std::map<pid_t, std::string> pidToId;   // para saber que actividad termino cuando wait() devuelve un pid
+    std::map<pid_t, int> pidToFd;           // extremo de lectura del pipe de cada hijo activo
     int activos = 0;
     size_t totalActividades = actividades.size();
     size_t completadasCount = 0;
@@ -97,20 +99,37 @@ void ejecutarPlan(std::vector<Actividad>& actividades, int K) {
             }
             if (!listas) continue; // todavia le falta alguna dependencia
 
+            int fd[2]; // pipe para que este hijo avise al padre cuando termine
+            if (pipe(fd) == -1) {
+                perror("pipe");
+                continue;
+            }
+
             pid_t pid = fork();
             if (pid < 0) {
                 std::cout << "No se pudo crear el proceso para la actividad " << a.id << std::endl;
+                close(fd[0]);
+                close(fd[1]);
                 continue;
             }
             if (pid == 0) {
+                close(fd[0]); // el hijo no lee, solo escribe
                 std::cout << "[Hijo " << getpid() << "] Ejecutando actividad "
                            << a.id << " (" << a.nombre << ") por " << a.tiempo_ms << "ms" << std::endl;
                 usleep(a.tiempo_ms * 1000); // usleep espera en micro segundos, por eso el *1000
+
+                // Manda un mensaje al padre avisando que termino, antes de salir
+                std::string mensaje = "Actividad " + a.id + " (" + a.nombre + ") completada";
+                write(fd[1], mensaje.c_str(), mensaje.size());
+                close(fd[1]);
+
                 std::cout << "[Hijo " << getpid() << "] Termino actividad " << a.id << std::endl;
                 exit(0);
             } else {
                 // aqui estoy en el proceso padre sigue de largo sin esperar todavia
+                close(fd[1]); // el padre no escribe, solo lee
                 pidToId[pid] = a.id;
+                pidToFd[pid] = fd[0];
                 corriendoIds.insert(a.id);
                 activos++;
             }
@@ -121,9 +140,21 @@ void ejecutarPlan(std::vector<Actividad>& actividades, int K) {
         pid_t terminado = wait(&status);
         if (terminado > 0) {
             std::string idTerminado = pidToId[terminado];
+
+            // Lee el mensaje que el hijo dejo en el pipe antes de terminar
+            int fdLectura = pidToFd[terminado];
+            char buffer[256];
+            int n = read(fdLectura, buffer, sizeof(buffer) - 1);
+            if (n > 0) {
+                buffer[n] = '\0';
+                std::cout << "[Padre] Recibido: " << buffer << std::endl;
+            }
+            close(fdLectura);
+
             completadas.insert(idTerminado);
             corriendoIds.erase(idTerminado);
             pidToId.erase(terminado);
+            pidToFd.erase(terminado);
             activos--;
             completadasCount++;
         }
@@ -177,3 +208,4 @@ int main() {
 
     return 0;
 }
+
