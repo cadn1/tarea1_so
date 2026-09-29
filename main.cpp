@@ -4,6 +4,7 @@
 #include <sstream>
 #include <fstream>
 #include <map>
+#include <set>
 #include <unistd.h>
 #include <sys/wait.h>
 
@@ -21,9 +22,8 @@ std::string quitarEspacios(const std::string& s) {
     size_t inicio = s.find_first_not_of(" \t");  // primera posicion que NO es espacio/tab
     size_t fin = s.find_last_not_of(" \t");       // ultima posicion que NO es espacio/tab
     if (inicio == std::string::npos) return "";   // el string era solo espacios (o vacio)
-    return s.substr(inicio, fin - inicio + 1);    // devuelve solo la parte "real" del string 
+    return s.substr(inicio, fin - inicio + 1);    // devuelve solo la parte "real" del string
 }
-
 
 // Recibe una linea completa de plan.txt como por ejemplo: ("4 : asar_longaniza : 800 : 1, 2")
 Actividad parsearLinea(const std::string& linea) {
@@ -74,24 +74,62 @@ std::map<std::string, std::vector<std::string>> construirDependientes(const std:
     return dependientes;
 }
 
-void ejecutarActividad(const Actividad& a) {
-    pid_t pid = fork();
+// Ejecuta el plan respetando dependencias y el limite K de concurrencia.
+// Sin busy waiting: usa wait() que bloquea de verdad, sin gastar CPU en un loop de chequeo.
+// Sin race conditions: solo el proceso padre toca estas estructuras, los hijos no comparten memoria.
+void ejecutarPlan(std::vector<Actividad>& actividades, int K) {
+    std::set<std::string> completadas;      // ids que ya terminaron
+    std::set<std::string> corriendoIds;     // ids que estan corriendo ahora
+    std::map<pid_t, std::string> pidToId;   // para saber que actividad termino cuando wait() devuelve un pid
+    int activos = 0;
+    size_t totalActividades = actividades.size();
+    size_t completadasCount = 0;
 
-    if (pid < 0) {
-       std::cout << "No se pudo crear el proceso para la actividad " << a.id << std::endl;
-        return;
-	}
+    while (completadasCount < totalActividades) {
+        // Intenta lanzar actividades listas mientras haya cupo (K)
+        for (Actividad& a : actividades) {
+            if (completadas.count(a.id) || corriendoIds.count(a.id)) continue; // ya la lance o ya termino
+            if (activos >= K) break; // sin cupo, no lanzo mas por ahora
 
-    if (pid == 0) {
-        std::cout << "[Hijo " << getpid() << "] Ejecutando actividad "
-                   << a.id << " (" << a.nombre << ") por " << a.tiempo_ms << "ms" << std::endl;
-        usleep(a.tiempo_ms * 1000); // usleep espera en micro segundos, por eso el *1000
-        std::cout << "[Hijo " << getpid() << "] Termino actividad " << a.id << std::endl;
-        exit(0);
+            bool listas = true;
+            for (const std::string& dep : a.dependencias) {
+                if (!completadas.count(dep)) { listas = false; break; }
+            }
+            if (!listas) continue; // todavia le falta alguna dependencia
+
+            pid_t pid = fork();
+            if (pid < 0) {
+                std::cout << "No se pudo crear el proceso para la actividad " << a.id << std::endl;
+                continue;
+            }
+            if (pid == 0) {
+                std::cout << "[Hijo " << getpid() << "] Ejecutando actividad "
+                           << a.id << " (" << a.nombre << ") por " << a.tiempo_ms << "ms" << std::endl;
+                usleep(a.tiempo_ms * 1000); // usleep espera en micro segundos, por eso el *1000
+                std::cout << "[Hijo " << getpid() << "] Termino actividad " << a.id << std::endl;
+                exit(0);
+            } else {
+                // aqui estoy en el proceso padre sigue de largo sin esperar todavia
+                pidToId[pid] = a.id;
+                corriendoIds.insert(a.id);
+                activos++;
+            }
+        }
+
+        // Espera a que termine CUALQUIER hijo (bloqueante, sin busy waiting)
+        int status;
+        pid_t terminado = wait(&status);
+        if (terminado > 0) {
+            std::string idTerminado = pidToId[terminado];
+            completadas.insert(idTerminado);
+            corriendoIds.erase(idTerminado);
+            pidToId.erase(terminado);
+            activos--;
+            completadasCount++;
+        }
     }
-	// aqui estoy en el proceso padre sigue de largo sin esperar todavia
 }
- 
+
 int main() {
     std::ifstream archivo("plan.txt");
     if (!archivo.is_open()) {
@@ -133,15 +171,9 @@ int main() {
         std::cout << std::endl;
     }
 
-    std::cout << "\n--- Ejecutando actividades ---" << std::endl;
-    for (const Actividad& a : actividades) {
-        ejecutarActividad(a);
-    }
-
-    // Esperar a que todos los hijos terminen antes de que el padre salga
-    for (size_t i = 0; i < actividades.size(); i++) {
-        wait(NULL);
-    }
+    int K = 2; // por ahora lo dejare fijo, despues lo tomamos de argv
+    std::cout << "\n--- Ejecutando plan con K=" << K << " ---" << std::endl;
+    ejecutarPlan(actividades, K);
 
     return 0;
 }
