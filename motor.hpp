@@ -79,6 +79,12 @@ inline void ejecutarPlan(std::vector<Actividad>& actividades, int K) {
                            << a.id << " (" << a.nombre << ") durante " << a.tiempo_ms << "ms" << std::endl;
                 
                 usleep(a.tiempo_ms * 1000); 
+		
+		// prueba: esta actividad falla a proposito para probar el aislamiento
+                if (a.nombre == "actividad_falla") {
+                    close(fd[1]);
+                    exit(1);
+                }
 
                 std::string mensaje = "Actividad " + a.id + " (" + a.nombre + ") completada";
                 write(fd[1], mensaje.c_str(), mensaje.size());

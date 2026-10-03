@@ -1,0 +1,5 @@
+1 : actividad_ok : 200 :
+2 : actividad_falla : 200 :
+3 : depende_de_falla : 200 : 2
+4 : independiente : 200 :
+5 : depende_de_ok : 200 : 1
