@@ -9,6 +9,13 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include "lector.hpp"
+#include <csignal>
+
+inline volatile sig_atomic_t seremi = 0;
+
+inline void interceptarSeremi(int) {
+    seremi = 1;
+}
 
 inline void ejecutarPlan(std::vector<Actividad>& actividades, int K) {
     std::set<std::string> completadas;      
@@ -16,6 +23,7 @@ inline void ejecutarPlan(std::vector<Actividad>& actividades, int K) {
     std::set<std::string> fallidas;       
     std::map<pid_t, std::string> pidToId;   
     std::map<pid_t, int> pidToFd;           
+    std::signal(SIGINT, interceptarSeremi);
     
     int activos = 0;
     size_t totalActividades = actividades.size();
@@ -26,7 +34,7 @@ inline void ejecutarPlan(std::vector<Actividad>& actividades, int K) {
         ids_validos.insert(a.id);
     }
 
-    while (tareasCompletadas < totalActividades) {
+    while (tareasCompletadas < totalActividades && !seremi) {
         bool despachamos_alguno = false; // deadlock
 
         for (Actividad& a : actividades) {
@@ -80,11 +88,11 @@ inline void ejecutarPlan(std::vector<Actividad>& actividades, int K) {
                 
                 usleep(a.tiempo_ms * 1000); 
 		
-		// prueba: esta actividad falla a proposito para probar el aislamiento
-                if (a.nombre == "actividad_falla") {
+		// prueba: esta actividad falla a proposito para probar el aislamiento pueden utilizarla si gustan
+                /*if (a.nombre == "actividad_falla") {
                     close(fd[1]);
                     exit(1);
-                }
+                }*/
 
                 std::string mensaje = "Actividad " + a.id + " (" + a.nombre + ") completada";
                 write(fd[1], mensaje.c_str(), mensaje.size());
@@ -125,7 +133,7 @@ inline void ejecutarPlan(std::vector<Actividad>& actividades, int K) {
                         std::cout << "Padre -> Mensaje por pipe: " << buffer << std::endl;
                     }
                     completadas.insert(idTerminado);
-                } else {
+                } else if(!seremi) {
                     std::cout << "Padre-> ERROR: El trabajador " << idTerminado << " ha fallado.";
                     fallidas.insert(idTerminado); //a la lista
                 }
@@ -139,6 +147,20 @@ inline void ejecutarPlan(std::vector<Actividad>& actividades, int K) {
                 tareasCompletadas++;
             }
         }
+    }
+    if (seremi) {
+        std::cout << "\n LLEGO LA LEY - CERRANDO OPERACIONES\n";
+        for (auto const& [pid, id] : pidToId) {
+            std::cout << "ELIMINANDO TRABAJADOR: " << pid << "-> Actividad " << id << ")\n";
+            kill(pid, SIGTERM); // asesinar procesos huerfanos
+        }
+        
+        // limpiar para evitar procesos zombies
+        while (activos > 0) {
+            int status;
+            if (wait(&status) > 0) activos--;
+        }
+        std::cout << "Planificador clausurado.\n";
     }
 }
 
