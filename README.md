@@ -18,7 +18,7 @@ g++ -Wall -Wextra -std=c++17 -lpthread src/main.cpp -o planificador
 ## Uso
 
 ```bash
-./planificador <archivo_plan.txt> <K>
+./planificador <tests/archivo_plan.txt> <K>
 ```
 
 | Argumento | Descripción |
