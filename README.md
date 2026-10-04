@@ -12,7 +12,7 @@ Simulador de planificación de actividades para las Fiestas Patrias, modeladas c
 ## Compilación
 
 ```bash
-g++ -Wall -Wextra -std=c++17 -lpthread main.cpp -o planificador
+g++ -Wall -Wextra -std=c++17 -lpthread src/main.cpp -o planificador
 ```
 
 ## Uso
@@ -28,7 +28,7 @@ g++ -Wall -Wextra -std=c++17 -lpthread main.cpp -o planificador
 
 Ejemplo:
 ```bash
-./planificador plan.txt 2
+./planificador tests/plan.txt 2
 ```
 
 ## Estado del proyecto
@@ -76,7 +76,7 @@ La escalabilidad del planificador no se prueba con este archivo, sino con `plan_
 
 El plan de 10.000 actividades se genera con:
 ```bash
-python3 generador.py
+python3 tests/generador.py
 ```
 
 ## Autores
