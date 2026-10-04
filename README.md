@@ -18,16 +18,17 @@ g++ -Wall -Wextra -std=c++17 -lpthread src/main.cpp -o planificador
 ## Estructura del Directorio
 
 ```text
-📁 proyecto_ssoo/
+📁 tarea1_so/
 ├── 📁 src/
+│   ├── lector.hpp
 │   ├── main.cpp
-│   ├── motor.hpp
-│   └── lector.hpp
+│   └── motor.hpp
 ├── 📁 tests/
-│   ├── plan.txt
+│   ├── generador.py
 │   ├── plan_con_error.txt
 │   ├── plan_grande.txt
-│   └── generador.py
+│   ├── plan.txt
+│   └── resultado_estres.txt
 └── README.md
 ```
 
