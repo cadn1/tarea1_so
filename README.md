@@ -15,6 +15,23 @@ Simulador de planificación de actividades para las Fiestas Patrias, modeladas c
 g++ -Wall -Wextra -std=c++17 -lpthread src/main.cpp -o planificador
 ```
 
+## Estructura del Directorio
+
+```text
+📁 tarea1_so/
+├── 📁 src/
+│   ├── lector.hpp
+│   ├── main.cpp
+│   └── motor.hpp
+├── 📁 tests/
+│   ├── generador.py
+│   ├── plan_con_error.txt
+│   ├── plan_grande.txt
+│   ├── plan.txt
+│   └── resultado_estres.txt
+└── README.md
+```
+
 ## Uso
 
 ```bash
@@ -58,6 +75,7 @@ Ejemplo:
 - **Aislamiento de errores**: se detecta con `WIFEXITED`/`WEXITSTATUS` si un hijo falló. Las actividades que dependen (directa o indirectamente) de una fallida se cancelan sin ejecutarse.
 - **Manejo de SIGINT**: un handler marca una bandera (`volatile sig_atomic_t`) al recibir Ctrl+C. El ciclo principal revisa esa bandera y, si está activa, envía `SIGTERM` a todos los procesos hijos que seguían corriendo y espera su finalización con `wait()` antes de salir, evitando procesos zombies.
 - **IDs como string**: el enunciado describe los IDs como alfanuméricos, por lo que se usó `std::string` en vez de `int`.
+- **Resolución del DAG y Deadlocks (Enfoque Dinámico)**: Al principio pensamos en usar algoritmos clásicos de grafos (como Kahn) para detectar ciclos o deadlocks antes de que el programa siquiera empezara a correr. Sin embargo, decidimos irnos por un enfoque en tiempo real. En vez de pre-calcular todo el mapa futuro de los procesos, nuestro planificador reacciona a lo que está pasando en el momento. Ciclo a ciclo, el Jefe revisa qué tareas están listas, cuáles corren y cuáles fallaron. Si llega un punto en que no hay absolutamente nadie trabajando y tampoco se puede despachar ninguna tarea nueva, el sistema se da cuenta solo de que está en un deadlock y corta por lo sano. Decidimos hacerlo así porque simula mucho mejor cómo trabaja el scheduler de un sistema operativo de verdad: gestionando los recursos vivos sobre la marcha, en lugar de resolver un problema de pura teoría de grafos.
 
 ## Por qué el plan.txt de ejemplo es pequeño
 
@@ -73,6 +91,8 @@ La escalabilidad del planificador no se prueba con este archivo, sino con `plan_
 | `plan_con_error.txt` (1 actividad falla a propósito) | 2 | La rama dependiente se cancela, el resto completa normal |
 | `plan_grande.txt` (10.000 actividades generadas) | 50 | 10.000 completadas, código de salida 0, ~1m2s |
 | `plan_grande.txt` (10.000 actividades, interrumpido) | 5 | Ctrl+C detecta la señal, mata procesos activos y termina sin zombies |
+
+> **Nota sobre la prueba de error:** Para ejecutar `plan_con_error.txt` y evaluar el aislamiento en cascada, se deben descomentar las líneas 90 a 94 en `motor.hpp` que fuerzan el `exit(1)` si detectan que la tarea se llama "actividad_falla".
 
 El plan de 10.000 actividades se genera con:
 ```bash
