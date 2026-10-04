@@ -5,7 +5,7 @@
 #include "lector.hpp" 
 #include "motor.hpp"  
 
-int main(int argc, char* argv[]) { // validar
+int main(int argc, char* argv[]) { // valida argumentos, lee archivo y ejecuta el plan
     if (argc != 3) {
         std::cerr << "Uso: " << argv[0] << " <archivo.txt> <K_concurrencia>" << std::endl;
         return 1;

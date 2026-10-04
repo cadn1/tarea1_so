@@ -42,7 +42,7 @@ inline Actividad parsearLinea(const std::string& linea) { //cortar linea
         a.tiempo_ms=std::stoi(campo);
     }
 
-    std::getline(ss, campo);
+    std::getline(ss, campo); // obtener dependencias
     campo=quitarEspacios(campo);
     std::stringstream depsStream(campo);
     std::string dep;
@@ -56,7 +56,7 @@ inline Actividad parsearLinea(const std::string& linea) { //cortar linea
     return a;
 }
 
-inline std::map<std::string, std::vector<std::string>> construirDependientes(const std::vector<Actividad>& actividades) {
+inline std::map<std::string, std::vector<std::string>> construirDependientes(const std::vector<Actividad>& actividades) { // arma el DAG inverso: id -> quien depende de el
     std::map<std::string, std::vector<std::string>> dependientes;
     for (const Actividad& a : actividades) {
         for (const std::string& dep : a.dependencias) {
