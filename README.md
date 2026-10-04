@@ -92,6 +92,8 @@ La escalabilidad del planificador no se prueba con este archivo, sino con `plan_
 | `plan_grande.txt` (10.000 actividades generadas) | 50 | 10.000 completadas, código de salida 0, ~1m2s |
 | `plan_grande.txt` (10.000 actividades, interrumpido) | 5 | Ctrl+C detecta la señal, mata procesos activos y termina sin zombies |
 
+> **Nota sobre la prueba de error:** Para ejecutar `plan_con_error.txt` y evaluar el aislamiento en cascada, se deben descomentar las líneas 90 a 94 en `motor.hpp` que fuerzan el `exit(1)` si detectan que la tarea se llama "actividad_falla".
+
 El plan de 10.000 actividades se genera con:
 ```bash
 python3 tests/generador.py
