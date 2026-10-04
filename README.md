@@ -58,6 +58,7 @@ Ejemplo:
 - **Aislamiento de errores**: se detecta con `WIFEXITED`/`WEXITSTATUS` si un hijo falló. Las actividades que dependen (directa o indirectamente) de una fallida se cancelan sin ejecutarse.
 - **Manejo de SIGINT**: un handler marca una bandera (`volatile sig_atomic_t`) al recibir Ctrl+C. El ciclo principal revisa esa bandera y, si está activa, envía `SIGTERM` a todos los procesos hijos que seguían corriendo y espera su finalización con `wait()` antes de salir, evitando procesos zombies.
 - **IDs como string**: el enunciado describe los IDs como alfanuméricos, por lo que se usó `std::string` en vez de `int`.
+- **Resolución del DAG y Deadlocks (Enfoque Dinámico)**: Al principio pensamos en usar algoritmos clásicos de grafos (como Kahn) para detectar ciclos o deadlocks antes de que el programa siquiera empezara a correr. Sin embargo, decidimos irnos por un enfoque en tiempo real. En vez de pre-calcular todo el mapa futuro de los procesos, nuestro planificador reacciona a lo que está pasando en el momento. Ciclo a ciclo, el Jefe revisa qué tareas están listas, cuáles corren y cuáles fallaron. Si llega un punto en que no hay absolutamente nadie trabajando y tampoco se puede despachar ninguna tarea nueva, el sistema se da cuenta solo de que está en un deadlock y corta por lo sano. Decidimos hacerlo así porque simula mucho mejor cómo trabaja el scheduler de un sistema operativo de verdad: gestionando los recursos vivos sobre la marcha, en lugar de resolver un problema de pura teoría de grafos.
 
 ## Por qué el plan.txt de ejemplo es pequeño
 
