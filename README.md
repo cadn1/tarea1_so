@@ -15,6 +15,22 @@ Simulador de planificación de actividades para las Fiestas Patrias, modeladas c
 g++ -Wall -Wextra -std=c++17 -lpthread src/main.cpp -o planificador
 ```
 
+## Estructura del Directorio
+
+```text
+📁 proyecto_ssoo/
+├── 📁 src/
+│   ├── main.cpp
+│   ├── motor.hpp
+│   └── lector.hpp
+├── 📁 tests/
+│   ├── plan.txt
+│   ├── plan_con_error.txt
+│   ├── plan_grande.txt
+│   └── generador.py
+└── README.md
+```
+
 ## Uso
 
 ```bash
