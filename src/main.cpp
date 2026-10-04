@@ -12,9 +12,16 @@ int main(int argc, char* argv[]) { // valida argumentos, lee archivo y ejecuta e
     }
 
     std::string nombre_archivo = argv[1];
-    int limite_k = std::stoi(argv[2]);
+    int limite_k;
 
-    std::ifstream archivo(nombre_archivo);
+    try {
+        limite_k = std::stoi(argv[2]); // FIX PARA SOLO PERMITIR ENTEROS
+    } catch (const std::exception& e) {
+        std::cerr << "ERROR: El limite de concurrencia K debe ser un numero entero." << std::endl;
+        return 1;
+    }
+
+    std::ifstream archivo(nombre_archivo); //archivo debe existir
     if (!archivo.is_open()) {
         std::cerr << "Error: no se pudo abrir el archivo " << nombre_archivo << std::endl;
         return 1;
